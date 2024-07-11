@@ -1,6 +1,5 @@
 ---
 layout: post
-title: "Article 1"
 categories: misc
 ---
 
