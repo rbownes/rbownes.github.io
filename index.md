@@ -6,6 +6,6 @@
 # See: https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 #
 layout: home
-title: "Welcome to My Blog"
+title: "Welcome to Machine Learned"
 list_title: "Recent Posts"
 ---
