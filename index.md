@@ -6,4 +6,6 @@
 # See: https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 #
 layout: home
+title: "Welcome to My Blog"
+list_title: "Recent Posts"
 ---
