@@ -12,4 +12,4 @@ This is an automatically generated tag index.
 
 ## Posts referencing this tag:
 
-- [Agent skills - abstractions for simpler context management](/2026/01/07/agent-skills-abstractions-for-simpler-context-management.html)
+- [Agent skills - abstractions for simpler context management](/ai/harness/agentic%20coding/2026/01/07/agent-skills-abstractions-for-simpler-context-management.html)
