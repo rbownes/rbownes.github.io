@@ -1,0 +1,15 @@
+<aside class="sidebar">
+  <div class="sidebar-content">
+    <h3>Tags</h3>
+    <ul class="tag-list">
+      {%- assign sorted_tags = site.posts | where_exp: "post", "post.categories contains 'tags'" | sort: "title" -%}
+      {%- for tag_post in sorted_tags -%}
+        <li>
+          <a href="{{ tag_post.url | relative_url }}">
+            {{ tag_post.title | replace: "Tag: ", "" }}
+          </a>
+        </li>
+      {%- endfor -%}
+    </ul>
+  </div>
+</aside>
