@@ -12,4 +12,4 @@ This is an automatically generated tag index.
 
 ## Posts referencing this tag:
 
-- [Agent skills - abstractions for simpler context management](/2026/01/07/agent-skills-abstractions-for-simpler-context-management/)
+- [Agent skills - abstractions for simpler context management](/2026/01/07/agent-skills-abstractions-for-simpler-context-management.html)

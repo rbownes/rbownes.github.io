@@ -22,10 +22,12 @@ The [[machine-learning]] field is closely related to [[deep-learning]].
 
 
 
+
+
 ## Related Tags
 
-- [artificial-intelligence](/tags/2026/01/07/artificial-intelligence/)
-- [data-science](/tags/2026/01/07/data-science/)
-- [deep-learning](/tags/2026/01/07/deep-learning/)
-- [machine-learning](/tags/2026/01/07/machine-learning/)
-- [python](/tags/2026/01/07/python/)
+- [artificial-intelligence](/tags/2026/01/07/artificial-intelligence.html)
+- [data-science](/tags/2026/01/07/data-science.html)
+- [deep-learning](/tags/2026/01/07/deep-learning.html)
+- [machine-learning](/tags/2026/01/07/machine-learning.html)
+- [python](/tags/2026/01/07/python.html)

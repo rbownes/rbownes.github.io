@@ -14,6 +14,7 @@ This is a test of the tagging ability [[agentic harness]]
 ---
 
 
+
 ## Related Tags
 
-- [agentic harness](/tags/2026/01/07/agentic-harness/)
+- [agentic harness](/tags/2026/01/07/agentic-harness.html)
