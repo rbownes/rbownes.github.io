@@ -55,8 +55,29 @@ jekyll_file_to_url() {
         return 1
     fi
 
-    # Determine categories based on directory structure
+    # Extract categories from front matter
     local categories=""
+    local cat_line=$(grep "^categories:" "$file_path" | head -1)
+
+    if [[ -n "$cat_line" ]]; then
+        # Extract content between brackets: categories: [AI, harness, agentic coding]
+        local cat_content=$(echo "$cat_line" | sed 's/categories: *\[\(.*\)\]/\1/')
+
+        # If categories found, convert to URL path
+        if [[ -n "$cat_content" && "$cat_content" != "[]" ]]; then
+            # Split by comma, lowercase, trim, encode spaces, join with /
+            categories=$(echo "$cat_content" | \
+                tr ',' '\n' | \
+                sed 's/^ *//;s/ *$//' | \
+                tr '[:upper:]' '[:lower:]' | \
+                sed 's/ /%20/g' | \
+                tr '\n' '/' | \
+                sed 's/\/$//')
+            categories="${categories}/"
+        fi
+    fi
+
+    # Override with tags/ if in tags directory (tag files always use tags/ category)
     if [[ "$file_path" == *"/tags/"* ]]; then
         categories="tags/"
     fi
