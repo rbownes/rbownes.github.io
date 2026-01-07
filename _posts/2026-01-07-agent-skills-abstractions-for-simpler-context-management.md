@@ -8,10 +8,11 @@ tags: [AI, harness, agentic coding]
 
 # Agent skills - abstractions for simpler context management
 
-This is a test of the tagging ability [[agentic harness]]
+This is a test of the tagging ability [agentic harness](/tags/2026/01/07/agentic-harness.html)
 
 
 ---
+
 
 
 

@@ -394,6 +394,88 @@ add_related_tags_section() {
     log "  Added Related Tags section"
 }
 
+# Escape special characters for use in sed patterns
+# Handles: / & (most common in URLs)
+escape_sed_pattern() {
+    local input="$1"
+    echo "$input" | sed 's/[\/&]/\\&/g'
+}
+
+# Replace [[tag]] syntax with clickable markdown links
+#
+# Usage: replace_tag_syntax_with_links "path/to/post.md"
+#
+# For each [[tag]] found in the file:
+# 1. Look up tag file from tag index
+# 2. Convert tag file to Jekyll URL
+# 3. Replace [[tag]] with [tag](url)
+#
+# Example:
+#   Input:  "About [[machine-learning]]"
+#   Output: "About [machine-learning](/tags/2026/01/07/machine-learning.html)"
+replace_tag_syntax_with_links() {
+    local file="$1"
+
+    [[ ! -f "$file" ]] && die "File not found: $file"
+
+    # Check if feature is enabled
+    if [[ "${BLOG_REPLACE_TAG_SYNTAX:-true}" != "true" ]]; then
+        return 0
+    fi
+
+    # Ensure tag index is loaded
+    load_tag_index
+
+    # Extract tags from file
+    local tags
+    tags=$(extract_tags_from_file "$file")
+
+    if [[ -z "$tags" ]]; then
+        return 0
+    fi
+
+    local replacement_count=0
+    local IFS=$'\n'
+    local tag_array=($tags)
+    local tag
+
+    for tag in "${tag_array[@]}"; do
+        [[ -z "$tag" ]] && continue
+
+        # Look up tag file from index
+        if command -v jq &> /dev/null; then
+            local tag_file=$(jq -r --arg tag "$tag" '.tags[$tag].file // empty' "$BLOG_TAG_INDEX" 2>/dev/null)
+
+            if [[ -n "$tag_file" && -f "$tag_file" ]]; then
+                # Convert to Jekyll URL
+                local tag_url=$(jekyll_file_to_url "$tag_file")
+
+                if [[ -n "$tag_url" ]]; then
+                    # Escape special characters for sed
+                    local escaped_tag=$(escape_sed_pattern "$tag")
+                    local escaped_url=$(escape_sed_pattern "$tag_url")
+
+                    # Replace [[tag]] with [tag](url)
+                    # Use temporary file for safety (BSD sed compatible)
+                    sed "s/\[\[${escaped_tag}\]\]/[${escaped_tag}](${escaped_url})/g" "$file" > "${file}.tmp"
+                    mv "${file}.tmp" "$file"
+
+                    ((replacement_count++))
+                    log "  Replaced [[${tag}]] with link to ${tag_url}"
+                else
+                    log "  Warning: Could not generate URL for tag: $tag"
+                fi
+            else
+                log "  Warning: Tag file not found for: $tag"
+            fi
+        fi
+    done
+
+    if [[ $replacement_count -gt 0 ]]; then
+        log "  Replaced $replacement_count tag syntax patterns with links"
+    fi
+}
+
 process_file_tags() {
     local file="$1"
 
@@ -436,6 +518,9 @@ process_file_tags() {
 
     # Add Related Tags section to the post
     add_related_tags_section "$file"
+
+    # Replace [[tag]] syntax with inline links
+    replace_tag_syntax_with_links "$file"
 }
 
 update_tag_index_path() {
