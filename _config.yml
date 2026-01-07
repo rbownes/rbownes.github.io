@@ -23,6 +23,10 @@ plugins:
   - jekyll-feed
   - jekyll-seo-tag
 
+# Disable jekyll-relative-links plugin to prevent URL transformation
+relative_links:
+  enabled: false
+
 # Theme-specific settings
 
 # If you want to link only specific pages in your header, use this and add the path to the pages
