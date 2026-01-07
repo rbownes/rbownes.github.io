@@ -1,0 +1,24 @@
+# Jekyll
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+
+# Ruby
+*.gem
+.bundle
+vendor/
+
+# Blog CLI
+.blog/tag-index.json
+
+# Drafts (uncomment if you don't want to track drafts)
+# _drafts/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~

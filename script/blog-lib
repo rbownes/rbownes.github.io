@@ -1,0 +1,712 @@
+#!/bin/bash
+#
+# blog-lib - Function library for blog CLI
+#
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+log() {
+    echo "$*"
+}
+
+sanitize_filename() {
+    local input="$1"
+    echo "$input" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9 -]//g' \
+        | tr -s ' ' '-' \
+        | sed 's/^-//;s/-$//'
+}
+
+check_dependencies() {
+    local deps=(bash vim grep sed date git)
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            die "Required dependency not found: $dep"
+        fi
+    done
+
+    # jq is optional but recommended
+    if ! command -v jq &> /dev/null; then
+        log "Warning: jq not found. Tag indexing will use sed fallback."
+    fi
+}
+
+# ============================================================================
+# FRONT MATTER FUNCTIONS
+# ============================================================================
+
+generate_front_matter() {
+    local title="$1"
+    local date=$(date +"%Y-%m-%d %H:%M:%S %z")
+
+    cat <<EOF
+---
+layout: ${BLOG_DEFAULT_LAYOUT}
+title: "$title"
+date: $date
+categories: []
+tags: []
+---
+EOF
+}
+
+validate_front_matter() {
+    local file="$1"
+
+    # Check if file has front matter
+    local fm_start=$(head -1 "$file")
+    [[ "$fm_start" != "---" ]] && die "No front matter found in: $file"
+
+    # Extract front matter (between first two ---) - macOS compatible
+    local fm=$(sed -n '1,/^---$/p' "$file" | tail -n +2 | sed '$d')
+
+    [[ -z "$fm" ]] && die "Empty front matter in: $file"
+
+    # Check required fields
+    echo "$fm" | grep -q "^layout:" || die "Missing 'layout' field in: $file"
+    echo "$fm" | grep -q "^title:" || die "Missing 'title' field in: $file"
+    echo "$fm" | grep -q "^date:" || die "Missing 'date' field in: $file"
+
+    return 0
+}
+
+extract_title() {
+    local file="$1"
+    grep "^title:" "$file" | head -1 | sed 's/^title: *"\(.*\)"/\1/' | sed "s/^title: *'\(.*\)'/\1/" | sed 's/^title: *//'
+}
+
+update_front_matter_date() {
+    local file="$1"
+    local new_date=$(date +"%Y-%m-%d %H:%M:%S %z")
+
+    # Create backup
+    cp "$file" "${file}.bak"
+
+    # Update date field
+    sed "s/^date: .*/date: $new_date/" "${file}.bak" > "$file"
+    rm "${file}.bak"
+}
+
+# ============================================================================
+# TAG FUNCTIONS
+# ============================================================================
+
+init_tag_index() {
+    local index_dir=$(dirname "$BLOG_TAG_INDEX")
+    mkdir -p "$index_dir"
+
+    if command -v jq &> /dev/null; then
+        cat > "$BLOG_TAG_INDEX" <<'EOF'
+{
+  "version": "1.0",
+  "tags": {},
+  "last_updated": ""
+}
+EOF
+    else
+        # Simple format for sed fallback
+        echo "{}" > "$BLOG_TAG_INDEX"
+    fi
+}
+
+load_tag_index() {
+    if [[ ! -f "$BLOG_TAG_INDEX" ]]; then
+        init_tag_index
+    fi
+}
+
+save_tag_index() {
+    # Update last_updated timestamp
+    if command -v jq &> /dev/null; then
+        local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        local tmp_file="${BLOG_TAG_INDEX}.tmp"
+        jq ".last_updated = \"$timestamp\"" "$BLOG_TAG_INDEX" > "$tmp_file"
+        mv "$tmp_file" "$BLOG_TAG_INDEX"
+    fi
+}
+
+extract_tags_from_file() {
+    local file="$1"
+
+    # Extract all [[tag]] patterns, excluding code blocks
+    grep -oE '\[\[[^]]+\]\]' "$file" 2>/dev/null | sed 's/\[\[\(.*\)\]\]/\1/g' | sort -u
+}
+
+register_tag() {
+    local tag="$1"
+    local source_file="$2"
+    local slug=$(sanitize_filename "$tag")
+    local date=$(date +"%Y-%m-%d")
+    local tag_filename="${date}-${slug}.md"
+    local tag_filepath="${BLOG_TAG_DIR}/${tag_filename}"
+
+    if command -v jq &> /dev/null; then
+        # Use jq for JSON manipulation
+        local tmp_file="${BLOG_TAG_INDEX}.tmp"
+
+        jq --arg tag "$tag" \
+           --arg file "$tag_filepath" \
+           --arg ref "$source_file" \
+           '.tags[$tag] = (.tags[$tag] // {"file": $file, "referenced_by": []}) |
+            .tags[$tag].referenced_by |= (. + [$ref] | unique)' \
+           "$BLOG_TAG_INDEX" > "$tmp_file"
+
+        mv "$tmp_file" "$BLOG_TAG_INDEX"
+    fi
+
+    # Return tag file path
+    echo "$tag_filepath"
+}
+
+create_tag_file() {
+    local tag="$1"
+    local tag_filepath="$2"
+
+    # Skip if file already exists
+    [[ -f "$tag_filepath" ]] && return 0
+
+    mkdir -p "$BLOG_TAG_DIR"
+
+    local date_time=$(date +"%Y-%m-%d %H:%M:%S %z")
+
+    cat > "$tag_filepath" <<EOF
+---
+layout: post
+title: "Tag: $tag"
+date: $date_time
+categories: [tags]
+tags: [meta]
+---
+
+# Tag: $tag
+
+This is an automatically generated tag index.
+
+## Posts referencing this tag:
+
+EOF
+
+    log "Created tag file: $tag_filepath"
+}
+
+update_tag_backlinks() {
+    local tag="$1"
+    local tag_file="$2"
+
+    # Get all references to this tag (bash 3.x compatible)
+    local refs=()
+    if command -v jq &> /dev/null; then
+        while IFS= read -r line; do
+            refs+=("$line")
+        done < <(jq -r --arg tag "$tag" '.tags[$tag].referenced_by[]' "$BLOG_TAG_INDEX" 2>/dev/null)
+    fi
+
+    # Update backlinks section in tag file
+    if [[ ${#refs[@]} -gt 0 ]]; then
+        # Find where backlinks section starts
+        local line_num=$(grep -n "^## Posts referencing this tag:" "$tag_file" | cut -d: -f1)
+
+        if [[ -n "$line_num" ]]; then
+            # Recreate file with updated backlinks
+            head -n "$line_num" "$tag_file" > "${tag_file}.tmp"
+            echo "" >> "${tag_file}.tmp"
+
+            for ref in "${refs[@]}"; do
+                local ref_title=$(extract_title "$ref" 2>/dev/null || basename "$ref")
+                # Simple relative link - tag files are in _drafts/tags, posts are in _drafts or _posts
+                local ref_link="../$(basename "$ref")"
+                echo "- [$ref_title]($ref_link)" >> "${tag_file}.tmp"
+            done
+
+            mv "${tag_file}.tmp" "$tag_file"
+        fi
+    fi
+}
+
+add_related_tags_section() {
+    local file="$1"
+
+    # Skip if feature is disabled
+    if [[ "${BLOG_ADD_RELATED_TAGS:-true}" != "true" ]]; then
+        return 0
+    fi
+
+    # Extract tags from post
+    local tags=$(extract_tags_from_file "$file")
+
+    # Skip if no tags
+    if [[ -z "$tags" ]]; then
+        return 0
+    fi
+
+    # Build tag links
+    local tag_links=""
+    local IFS=$'\n'
+    local tag_array=($tags)
+    local tag
+
+    for tag in "${tag_array[@]}"; do
+        [[ -z "$tag" ]] && continue
+
+        # Get tag file path from index
+        if command -v jq &> /dev/null; then
+            local tag_file=$(jq -r --arg tag "$tag" '.tags[$tag].file // empty' "$BLOG_TAG_INDEX" 2>/dev/null)
+
+            if [[ -n "$tag_file" ]]; then
+                # Use relative path: tags/YYYY-MM-DD-tag.md (works from both _drafts and _posts)
+                local relative_path="tags/$(basename "$tag_file")"
+                tag_links="${tag_links}- [$tag]($relative_path)"$'\n'
+            fi
+        fi
+    done
+
+    # Skip if no valid tag links
+    if [[ -z "$tag_links" ]]; then
+        return 0
+    fi
+
+    # Check if Related Tags section already exists
+    local section_header="${BLOG_RELATED_TAGS_HEADING:-## Related Tags}"
+
+    if grep -q "^${section_header}" "$file"; then
+        # Section exists - update it
+        # Find line number of section
+        local section_start=$(grep -n "^${section_header}" "$file" | head -1 | cut -d: -f1)
+
+        # Find next ## heading or end of file
+        local section_end=$(tail -n +$((section_start + 1)) "$file" | grep -n "^##" | head -1 | cut -d: -f1)
+
+        if [[ -n "$section_end" ]]; then
+            # There's another section after - delete up to it
+            section_end=$((section_start + section_end - 1))
+            head -n $((section_start - 1)) "$file" > "${file}.tmp"
+            echo "" >> "${file}.tmp"
+            echo "$section_header" >> "${file}.tmp"
+            echo "" >> "${file}.tmp"
+            echo -n "$tag_links" >> "${file}.tmp"
+            echo "" >> "${file}.tmp"
+            tail -n +$((section_end + 1)) "$file" >> "${file}.tmp"
+        else
+            # Related Tags is the last section - replace to end of file
+            head -n $((section_start - 1)) "$file" > "${file}.tmp"
+            echo "" >> "${file}.tmp"
+            echo "$section_header" >> "${file}.tmp"
+            echo "" >> "${file}.tmp"
+            echo -n "$tag_links" >> "${file}.tmp"
+        fi
+
+        mv "${file}.tmp" "$file"
+    else
+        # Section doesn't exist - append it
+        # Make sure file ends with newline
+        if [[ -n "$(tail -c 1 "$file")" ]]; then
+            echo "" >> "$file"
+        fi
+
+        echo "" >> "$file"
+        echo "---" >> "$file"
+        echo "" >> "$file"
+        echo "$section_header" >> "$file"
+        echo "" >> "$file"
+        echo -n "$tag_links" >> "$file"
+    fi
+
+    log "  Added Related Tags section"
+}
+
+process_file_tags() {
+    local file="$1"
+
+    [[ ! -f "$file" ]] && die "File not found: $file"
+
+    log "Processing tags in: $file"
+
+    load_tag_index
+
+    # Extract tags
+    local tags
+    tags=$(extract_tags_from_file "$file")
+
+    if [[ -z "$tags" ]]; then
+        log "No tags found in: $file"
+        return 0
+    fi
+
+    # Process each tag (bash 3.x compatible - avoid here-string)
+    local IFS=$'\n'
+    local tag_array=($tags)
+    local tag
+    for tag in "${tag_array[@]}"; do
+        [[ -z "$tag" ]] && continue
+
+        log "  Found tag: [[$tag]]"
+
+        # Register tag and get file path
+        local tag_filepath=$(register_tag "$tag" "$file")
+
+        # Create tag file if it doesn't exist
+        create_tag_file "$tag" "$tag_filepath"
+
+        # Update backlinks
+        update_tag_backlinks "$tag" "$tag_filepath"
+
+    done
+
+    save_tag_index
+
+    # Add Related Tags section to the post
+    add_related_tags_section "$file"
+}
+
+update_tag_index_path() {
+    local old_path="$1"
+    local new_path="$2"
+
+    [[ ! -f "$BLOG_TAG_INDEX" ]] && return 0
+
+    if command -v jq &> /dev/null; then
+        local tmp_file="${BLOG_TAG_INDEX}.tmp"
+
+        # Update all references to old path
+        jq --arg old "$old_path" \
+           --arg new "$new_path" \
+           '.tags |= with_entries(
+               .value.referenced_by |= map(if . == $old then $new else . end)
+           )' \
+           "$BLOG_TAG_INDEX" > "$tmp_file"
+
+        mv "$tmp_file" "$BLOG_TAG_INDEX"
+    fi
+}
+
+publish_tag_files() {
+    local post_path="$1"
+
+    # Skip if feature is disabled
+    if [[ "${BLOG_AUTO_PUBLISH_TAGS:-true}" != "true" ]]; then
+        return 0
+    fi
+
+    # Extract tags from the post
+    local tags=$(extract_tags_from_file "$post_path")
+
+    # Skip if no tags
+    if [[ -z "$tags" ]]; then
+        return 0
+    fi
+
+    # Create _posts/tags directory if needed
+    mkdir -p "${BLOG_POSTS_DIR}/tags"
+
+    # Process each tag
+    local IFS=$'\n'
+    local tag_array=($tags)
+    local tag
+    local published_count=0
+
+    for tag in "${tag_array[@]}"; do
+        [[ -z "$tag" ]] && continue
+
+        # Get tag file path from index
+        if command -v jq &> /dev/null; then
+            local tag_file=$(jq -r --arg tag "$tag" '.tags[$tag].file // empty' "$BLOG_TAG_INDEX" 2>/dev/null)
+
+            if [[ -n "$tag_file" && -f "$tag_file" ]]; then
+                # Check if tag file is in _drafts/tags/
+                if [[ "$tag_file" == *"_drafts/tags/"* ]]; then
+                    local tag_basename=$(basename "$tag_file")
+                    local published_tag_path="${BLOG_POSTS_DIR}/tags/${tag_basename}"
+
+                    # Copy tag file to _posts/tags/
+                    cp "$tag_file" "$published_tag_path"
+
+                    # Update tag index to point to published version
+                    local tmp_file="${BLOG_TAG_INDEX}.tmp"
+                    jq --arg tag "$tag" \
+                       --arg new_path "$published_tag_path" \
+                       '.tags[$tag].file = $new_path' \
+                       "$BLOG_TAG_INDEX" > "$tmp_file"
+                    mv "$tmp_file" "$BLOG_TAG_INDEX"
+
+                    log "  Published tag file: $published_tag_path"
+                    ((published_count++))
+
+                    # Add to git if auto-commit is enabled
+                    if [[ "$BLOG_AUTO_COMMIT" == "true" ]]; then
+                        git add "$published_tag_path" 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    if [[ $published_count -gt 0 ]]; then
+        log "Published $published_count tag file(s)"
+    fi
+}
+
+# ============================================================================
+# COMMAND FUNCTIONS
+# ============================================================================
+
+cmd_new() {
+    local title="$*"
+    [[ -z "$title" ]] && die "Title required. Usage: blog new <title>"
+
+    local date=$(date +"%Y-%m-%d")
+    local slug=$(sanitize_filename "$title")
+    local filename="${date}-${slug}.md"
+    local filepath="${BLOG_DRAFTS_DIR}/${filename}"
+
+    # Check if file already exists
+    if [[ -f "$filepath" ]]; then
+        die "Draft already exists: $filepath"
+    fi
+
+    mkdir -p "$BLOG_DRAFTS_DIR"
+
+    # Create file
+    {
+        generate_front_matter "$title"
+        echo ""
+        echo "# $title"
+        echo ""
+    } > "$filepath"
+
+    log "Created draft: $filepath"
+
+    # Open in editor
+    ${BLOG_EDITOR} "$filepath"
+}
+
+cmd_process() {
+    local target="${1:-}"
+
+    if [[ -n "$target" ]]; then
+        # Process single file
+        if [[ ! -f "$target" ]]; then
+            # Try with _drafts prefix
+            target="${BLOG_DRAFTS_DIR}/${target}"
+        fi
+
+        process_file_tags "$target"
+    else
+        # Process all drafts
+        log "Processing tags in all drafts..."
+
+        local draft_files=("${BLOG_DRAFTS_DIR}"/*.md)
+
+        if [[ ! -e "${draft_files[0]}" ]]; then
+            log "No drafts found in ${BLOG_DRAFTS_DIR}"
+            return 0
+        fi
+
+        for file in "${draft_files[@]}"; do
+            # Skip tag files
+            [[ "$file" == *"/tags/"* ]] && continue
+
+            process_file_tags "$file"
+        done
+
+        log "Tag processing complete!"
+    fi
+}
+
+cmd_publish() {
+    local draft="${1:-}"
+    [[ -z "$draft" ]] && die "Draft filename required. Usage: blog publish <file>"
+
+    # Handle both full path and just filename
+    local draft_path
+    if [[ -f "$draft" ]]; then
+        draft_path="$draft"
+    elif [[ -f "${BLOG_DRAFTS_DIR}/${draft}" ]]; then
+        draft_path="${BLOG_DRAFTS_DIR}/${draft}"
+    else
+        die "Draft not found: $draft"
+    fi
+
+    log "Validating front matter..."
+    validate_front_matter "$draft_path"
+
+    log "Updating publish date..."
+    update_front_matter_date "$draft_path"
+
+    local post_path="${BLOG_POSTS_DIR}/$(basename "$draft_path")"
+
+    # Check if target already exists
+    if [[ -f "$post_path" ]]; then
+        read -p "File already exists in _posts/. Overwrite? [y/N] " -n 1 -r
+        echo
+        [[ ! $REPLY =~ ^[Yy]$ ]] && die "Publish cancelled."
+    fi
+
+    mkdir -p "$BLOG_POSTS_DIR"
+    mv "$draft_path" "$post_path"
+
+    log "Published: $post_path"
+
+    # Update tag index
+    update_tag_index_path "$draft_path" "$post_path"
+
+    # Publish related tag files
+    publish_tag_files "$post_path"
+
+    # Git integration
+    if [[ "$BLOG_AUTO_COMMIT" == "true" ]]; then
+        local title=$(extract_title "$post_path")
+
+        git add "$post_path"
+        git commit -m "Publish: $title
+
+🤖 Generated with Claude Code
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+        read -p "Push to remote? [y/N] " -n 1 -r
+        echo
+        [[ $REPLY =~ ^[Yy]$ ]] && git push origin main
+    else
+        log ""
+        log "To commit and push:"
+        log "  git add $post_path"
+        log "  git commit -m \"Publish: $(extract_title "$post_path")\""
+        log "  git push origin main"
+    fi
+}
+
+cmd_list() {
+    local mode="${1:---drafts}"
+
+    case "$mode" in
+        --drafts)
+            echo "DRAFTS"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            local draft_files=("${BLOG_DRAFTS_DIR}"/*.md)
+
+            if [[ ! -e "${draft_files[0]}" ]]; then
+                echo "No drafts found"
+                return 0
+            fi
+
+            for file in "${draft_files[@]}"; do
+                # Skip tag files
+                [[ "$file" == *"/tags/"* ]] && continue
+
+                local title=$(extract_title "$file" 2>/dev/null || echo "Untitled")
+                local date=$(basename "$file" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' || echo "No date")
+
+                # Count tags in file
+                local tag_count=$(extract_tags_from_file "$file" | wc -l | tr -d ' ')
+
+                echo "$date  $title  [$tag_count tags]"
+            done | sort -r
+            ;;
+        --tags)
+            echo "TAG INDEX"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            if [[ ! -f "$BLOG_TAG_INDEX" ]]; then
+                echo "No tags indexed yet"
+                return 0
+            fi
+
+            if command -v jq &> /dev/null; then
+                jq -r '.tags | to_entries[] | "\(.key) (\(.value.referenced_by | length) references)"' "$BLOG_TAG_INDEX" | sort
+            else
+                echo "jq required for tag listing"
+            fi
+            ;;
+        *)
+            die "Unknown list option: $mode. Use --drafts or --tags"
+            ;;
+    esac
+}
+
+cmd_status() {
+    echo "BLOG STATUS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    local draft_count=0
+    local draft_files=("${BLOG_DRAFTS_DIR}"/*.md)
+    if [[ -e "${draft_files[0]}" ]]; then
+        for file in "${draft_files[@]}"; do
+            [[ "$file" == *"/tags/"* ]] && continue
+            ((draft_count++))
+        done
+    fi
+
+    local post_count=0
+    local post_files=("${BLOG_POSTS_DIR}"/*.md)
+    if [[ -e "${post_files[0]}" ]]; then
+        post_count=${#post_files[@]}
+    fi
+
+    local tag_count=0
+    if [[ -f "$BLOG_TAG_INDEX" ]] && command -v jq &> /dev/null; then
+        tag_count=$(jq '.tags | length' "$BLOG_TAG_INDEX")
+    fi
+
+    echo "Drafts:          $draft_count"
+    echo "Published posts: $post_count"
+    echo "Total tags:      $tag_count"
+    echo ""
+
+    if [[ $draft_count -gt 0 ]]; then
+        echo "RECENT DRAFTS:"
+        cmd_list --drafts | tail -n +3 | head -5
+    fi
+}
+
+cmd_help() {
+    cat <<EOF
+blog - CLI tool for Jekyll blog management
+
+USAGE:
+    blog <command> [options]
+
+COMMANDS:
+    new <title>           Create new draft post
+    process [file]        Process tags in draft(s)
+    publish <file>        Publish draft to _posts
+    list [--drafts|--tags]
+                          List drafts or tags
+    status                Show blog status
+    help                  Show this help
+    version               Show version
+
+EXAMPLES:
+    blog new "My First Post"
+    blog new Getting Started with AI
+    blog process
+    blog process 2026-01-06-my-post.md
+    blog publish 2026-01-06-my-first-post.md
+    blog list --drafts
+    blog list --tags
+    blog status
+
+TAG SYNTAX:
+    Use [[tag-name]] in your posts to create cross-references.
+    Run 'blog process' to extract tags and create tag files.
+
+CONFIGURATION:
+    Edit .blog/config to customize behavior:
+      BLOG_EDITOR         - Editor to use (default: vim)
+      BLOG_AUTO_COMMIT    - Auto-commit on publish (default: false)
+
+For more information, see docs/BLOG_CLI.md
+
+EOF
+}
+
+cmd_version() {
+    echo "blog v1.0.0"
+}

@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# blog - CLI tool for Jekyll blog management
+#
+# Usage: blog <command> [options]
+#
+
+set -euo pipefail
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BLOG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BLOG_LIB="${SCRIPT_DIR}/blog-lib"
+
+# Default configuration
+BLOG_EDITOR="${BLOG_EDITOR:-vim}"
+BLOG_DRAFTS_DIR="${BLOG_DRAFTS_DIR:-_drafts}"
+BLOG_POSTS_DIR="${BLOG_POSTS_DIR:-_posts}"
+BLOG_TAG_INDEX="${BLOG_TAG_INDEX:-.blog/tag-index.json}"
+BLOG_DEFAULT_LAYOUT="${BLOG_DEFAULT_LAYOUT:-post}"
+BLOG_AUTO_COMMIT="${BLOG_AUTO_COMMIT:-false}"
+BLOG_TAG_DIR="${BLOG_TAG_DIR:-_drafts/tags}"
+
+# Load user configuration
+CONFIG_FILE="${BLOG_ROOT}/.blog/config"
+[[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+
+# Source function library
+source "$BLOG_LIB"
+
+# Change to blog root
+cd "$BLOG_ROOT"
+
+# ============================================================================
+# COMMAND ROUTING
+# ============================================================================
+
+main() {
+    local command="${1:-}"
+
+    case "$command" in
+        new)
+            shift
+            cmd_new "$@"
+            ;;
+        process)
+            shift
+            cmd_process "$@"
+            ;;
+        publish)
+            shift
+            cmd_publish "$@"
+            ;;
+        list)
+            shift
+            cmd_list "$@"
+            ;;
+        status)
+            cmd_status
+            ;;
+        help|--help|-h|"")
+            cmd_help
+            ;;
+        version|--version|-v)
+            cmd_version
+            ;;
+        *)
+            echo "Error: Unknown command: $command" >&2
+            echo ""
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
+
+check_dependencies
+main "$@"

@@ -1,0 +1,35 @@
+# Blog CLI Configuration
+# Edit these values to customize behavior
+
+# Editor to use for creating/editing posts (default: vim)
+BLOG_EDITOR=vim
+
+# Directory for draft posts (default: _drafts)
+BLOG_DRAFTS_DIR=_drafts
+
+# Directory for published posts (default: _posts)
+BLOG_POSTS_DIR=_posts
+
+# Tag index file location (default: .blog/tag-index.json)
+BLOG_TAG_INDEX=.blog/tag-index.json
+
+# Default layout for new posts (default: post)
+BLOG_DEFAULT_LAYOUT=post
+
+# Auto-commit on publish (default: false)
+# Set to 'true' to automatically git add and commit when publishing
+BLOG_AUTO_COMMIT=false
+
+# Directory for tag files (default: _drafts/tags)
+BLOG_TAG_DIR=_drafts/tags
+
+# Auto-publish tag files when publishing posts (default: true)
+# Set to 'false' to keep tag files in _drafts/tags/
+BLOG_AUTO_PUBLISH_TAGS=true
+
+# Add "Related Tags" section to posts during process (default: true)
+# Set to 'false' to disable automatic tag link generation
+BLOG_ADD_RELATED_TAGS=true
+
+# Related tags section heading (default: "## Related Tags")
+BLOG_RELATED_TAGS_HEADING="## Related Tags"
