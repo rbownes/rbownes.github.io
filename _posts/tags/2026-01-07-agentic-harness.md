@@ -8,7 +8,7 @@ tags: [meta]
 
 # Tag: agentic harness
 
-This is an automatically generated tag index.
+This is an automatically generated tag index page.
 
 ## Posts referencing this tag:
 
