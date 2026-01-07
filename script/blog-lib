@@ -25,6 +25,47 @@ sanitize_filename() {
         | sed 's/^-//;s/-$//'
 }
 
+# jekyll_file_to_url - Convert Jekyll markdown filename to URL
+#
+# Assumes Jekyll default permalink: /:categories/:year/:month/:day/:title/
+# If _config.yml permalink changes, update this function accordingly.
+#
+# Usage: jekyll_file_to_url "_posts/2026-01-06-test.md"
+# Output: /2026/01/06/test/
+jekyll_file_to_url() {
+    local file_path="$1"
+
+    # Get basename for parsing
+    local basename=$(basename "$file_path")
+
+    # Extract date components (YYYY-MM-DD format)
+    # Using grep -oE and sed for macOS bash 3.2 compatibility
+    local year=$(echo "$basename" | grep -oE '^[0-9]{4}')
+    local month=$(echo "$basename" | sed -n 's/^[0-9]\{4\}-\([0-9]\{2\}\)-.*/\1/p')
+    local day=$(echo "$basename" | sed -n 's/^[0-9]\{4\}-[0-9]\{2\}-\([0-9]\{2\}\)-.*/\1/p')
+
+    # Extract title/slug (remove YYYY-MM-DD- prefix and .md suffix)
+    local title=$(echo "$basename" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-\(.*\)\.md$/\1/')
+
+    # Validate components
+    if [[ -z "$year" ]] || [[ -z "$month" ]] || [[ -z "$day" ]] || [[ -z "$title" ]]; then
+        log "Warning: Could not parse Jekyll filename format from: $file_path"
+        echo ""
+        return 1
+    fi
+
+    # Determine categories based on directory structure
+    local categories=""
+    if [[ "$file_path" == *"/tags/"* ]]; then
+        categories="tags/"
+    fi
+
+    # Build Jekyll URL (default permalink: /:categories/:year/:month/:day/:title/)
+    local url="/${categories}${year}/${month}/${day}/${title}/"
+
+    echo "$url"
+}
+
 check_dependencies() {
     local deps=(bash vim grep sed date git)
     for dep in "${deps[@]}"; do
@@ -221,9 +262,14 @@ update_tag_backlinks() {
 
             for ref in "${refs[@]}"; do
                 local ref_title=$(extract_title "$ref" 2>/dev/null || basename "$ref")
-                # Simple relative link - tag files are in _drafts/tags, posts are in _drafts or _posts
-                local ref_link="../$(basename "$ref")"
-                echo "- [$ref_title]($ref_link)" >> "${tag_file}.tmp"
+
+                # Convert post file path to Jekyll URL
+                local ref_url=$(jekyll_file_to_url "$ref")
+
+                # Only add backlink if URL conversion succeeded
+                if [[ -n "$ref_url" ]]; then
+                    echo "- [$ref_title]($ref_url)" >> "${tag_file}.tmp"
+                fi
             done
 
             mv "${tag_file}.tmp" "$tag_file"
@@ -261,9 +307,13 @@ add_related_tags_section() {
             local tag_file=$(jq -r --arg tag "$tag" '.tags[$tag].file // empty' "$BLOG_TAG_INDEX" 2>/dev/null)
 
             if [[ -n "$tag_file" ]]; then
-                # Use relative path: tags/YYYY-MM-DD-tag.md (works from both _drafts and _posts)
-                local relative_path="tags/$(basename "$tag_file")"
-                tag_links="${tag_links}- [$tag]($relative_path)"$'\n'
+                # Convert tag file path to Jekyll URL
+                local tag_url=$(jekyll_file_to_url "$tag_file")
+
+                # Only add link if URL conversion succeeded
+                if [[ -n "$tag_url" ]]; then
+                    tag_links="${tag_links}- [$tag]($tag_url)"$'\n'
+                fi
             fi
         fi
     done
