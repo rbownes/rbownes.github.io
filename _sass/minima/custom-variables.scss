@@ -1,1 +1,49 @@
-// Placeholder to allow overriding predefined variables smoothly.
+// Tokyo Night Color Palette
+// ==========================
+
+// Backgrounds
+$tn-bg-dark: #1a1b26;       // Darkest background
+$tn-bg-storm: #24283b;      // Main dark background
+$tn-bg-highlight: #292e42;  // Slightly lighter for cards/hover
+
+// Foreground/Text
+$tn-fg: #c0caf5;            // Primary text
+$tn-fg-dark: #a9b1d6;       // Secondary text
+$tn-comment: #565f89;       // Muted text/comments
+
+// Accent Colors
+$tn-blue: #7aa2f7;          // Primary accent
+$tn-cyan: #7dcfff;          // Links
+$tn-purple: #bb9af7;        // Highlights
+$tn-magenta: #f7768e;       // Errors/important
+$tn-green: #9ece6a;         // Success
+$tn-yellow: #e0af68;        // Warnings
+$tn-orange: #ff9e64;        // Secondary accent
+
+// Gradient (for header - Tokyo Night inspired)
+$tn-gradient: linear-gradient(135deg, #bb9af7 0%, #7aa2f7 50%, #7dcfff 100%);
+
+// Override Minima default variables
+$brand-color: $tn-purple;
+$brand-color-light: $tn-blue;
+$brand-color-dark: darken($tn-purple, 15%);
+
+$site-title-color: $tn-fg;
+
+$text-color: $tn-fg;
+$background-color: $tn-bg-dark;
+$code-background-color: $tn-bg-storm;
+
+$link-base-color: $tn-cyan;
+$link-visited-color: $tn-purple;
+$link-hover-color: lighten($tn-cyan, 10%);
+
+$border-color-01: $tn-bg-highlight;
+$border-color-02: $tn-bg-storm;
+$border-color-03: $tn-comment;
+
+$table-text-color: $tn-fg;
+$table-zebra-color: $tn-bg-storm;
+$table-header-bg-color: $tn-bg-highlight;
+$table-header-border: $tn-comment;
+$table-border-color: $tn-bg-highlight;

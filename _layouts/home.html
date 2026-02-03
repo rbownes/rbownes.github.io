@@ -3,68 +3,85 @@ layout: base
 ---
 
 <div class="home">
-  {%- if page.title -%}
-    <h1 class="page-heading">{{ page.title }}</h1>
-  {%- endif -%}
-
   {{ content }}
 
-  <div class="home-container">
-    <div class="sidebar-wrapper">
-      {%- include sidebar.html -%}
-    </div>
+  {% if site.paginate %}
+    {% assign posts = paginator.posts %}
+  {% else %}
+    {% assign posts = site.posts %}
+  {% endif %}
 
-    <div class="main-content">
-      {% if site.paginate %}
-        {% assign posts = paginator.posts %}
-      {% else %}
-        {% assign posts = site.posts %}
-      {% endif %}
-
-
-      {%- if posts.size > 0 -%}
-        {%- if page.list_title -%}
-          <h2 class="post-list-heading">{{ page.list_title }}</h2>
-        {%- endif -%}
-        <ul class="post-list">
-          {%- assign date_format = site.minima.date_format | default: "%b %-d, %Y" -%}
-          {%- for post in posts -%}
-            {%- unless post.categories contains "tags" -%}
-            <li>
-              <span class="post-meta">{{ post.date | date: date_format }}</span>
-              <h3>
-                <a class="post-link" href="{{ post.url | relative_url }}">
-                  {{ post.title | escape }}
-                </a>
-              </h3>
-              {%- if site.show_excerpts -%}
-                {{ post.excerpt }}
-              {%- endif -%}
-            </li>
-            {%- endunless -%}
+  {%- if posts.size > 0 -%}
+    {%- if page.list_title -%}
+      <h2 class="post-list-heading">{{ page.list_title }}</h2>
+    {%- endif -%}
+    <ul class="post-list">
+      {%- assign date_format = site.minima.date_format | default: "%b %-d, %Y" -%}
+      {%- assign post_index = 0 -%}
+      {%- for post in posts -%}
+        {%- unless post.categories contains "tags" -%}
+          {%- assign post_index = post_index | plus: 1 -%}
+          {%- assign gradient_num = post_index | modulo: 6 | plus: 1 -%}
+          {%- assign title_words = post.title | split: " " -%}
+          {%- assign initials = "" -%}
+          {%- for word in title_words limit: 2 -%}
+            {%- assign first_char = word | slice: 0 -%}
+            {%- assign initials = initials | append: first_char -%}
           {%- endfor -%}
-        </ul>
+          <li class="post-card">
+            <div class="post-thumbnail">
+              {%- if post.thumbnail -%}
+                <img src="{{ post.thumbnail | relative_url }}" alt="{{ post.title | escape }}">
+              {%- else -%}
+                <div class="thumbnail-placeholder gradient-{{ gradient_num }}">{{ initials | upcase }}</div>
+              {%- endif -%}
+            </div>
+            <div class="post-content">
+              <h2 class="post-title">
+                <a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+              </h2>
+              {%- if site.show_excerpts -%}
+                <div class="post-excerpt">{{ post.excerpt | strip_html | truncate: 160 }}</div>
+              {%- endif -%}
+              {%- if post.tags.size > 0 -%}
+                <div class="post-tags">
+                  {%- for tag in post.tags limit: 3 -%}
+                    <span class="tag-badge">{{ tag }}</span>
+                  {%- endfor -%}
+                </div>
+              {%- endif -%}
+              <div class="post-meta-info">
+                <span class="post-date">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857V3.857z"/><path d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>
+                  {{ post.date | date: date_format }}
+                </span>
+                <span class="post-reading-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/></svg>
+                  {%- include reading-time.html content=post.content -%}
+                </span>
+              </div>
+            </div>
+          </li>
+        {%- endunless -%}
+      {%- endfor -%}
+    </ul>
 
     {% if site.paginate %}
       <div class="pager">
         <ul class="pagination">
-        {%- if paginator.previous_page %}
-          <li><a href="{{ paginator.previous_page_path | relative_url }}" class="previous-page">{{ paginator.previous_page }}</a></li>
-        {%- else %}
-          <li><div class="pager-edge">•</div></li>
-        {%- endif %}
+          {%- if paginator.previous_page %}
+            <li><a href="{{ paginator.previous_page_path | relative_url }}" class="previous-page">{{ paginator.previous_page }}</a></li>
+          {%- else %}
+            <li><div class="pager-edge">•</div></li>
+          {%- endif %}
           <li><div class="current-page">{{ paginator.page }}</div></li>
-        {%- if paginator.next_page %}
-          <li><a href="{{ paginator.next_page_path | relative_url }}" class="next-page">{{ paginator.next_page }}</a></li>
-        {%- else %}
-          <li><div class="pager-edge">•</div></li>
-        {%- endif %}
+          {%- if paginator.next_page %}
+            <li><a href="{{ paginator.next_page_path | relative_url }}" class="next-page">{{ paginator.next_page }}</a></li>
+          {%- else %}
+            <li><div class="pager-edge">•</div></li>
+          {%- endif %}
         </ul>
       </div>
     {%- endif %}
-
-      {%- endif -%}
-    </div>
-  </div>
-
+  {%- endif -%}
 </div>
